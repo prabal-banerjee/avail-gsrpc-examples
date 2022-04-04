@@ -32,6 +32,18 @@ func main() {
 		fmt.Printf("Chain is at block: #%v\n", head.Number)
 		count++
 
+		hash, err := api.RPC.Chain.GetBlockHash(uint64(head.Number))
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("Chain is at block: #%v with hash %v\n", head.Number, hash.Hex())
+
+		ret, err := api.RPC.Chain.GetBlock(hash)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("Get block value: ", fmt.Sprint(ret))
+
 		if count == 10 {
 			sub.Unsubscribe()
 			break
