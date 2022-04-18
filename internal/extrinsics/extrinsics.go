@@ -1,37 +1,23 @@
-package main
+package extrinsics
 
 import (
-	"fmt"
-	"time"
-
 	gsrpc "github.com/centrifuge/go-substrate-rpc-client/v4"
-	"github.com/centrifuge/go-substrate-rpc-client/v4/config"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/signature"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 )
 
-func main() {
-	// This sample shows how to create a transaction to make a Avail data submission
-
-	// Instantiate the API (locally)
-	api, err := gsrpc.NewSubstrateAPI(config.Default().RPCURL)
-	// api, err := gsrpc.NewSubstrateAPI(config.Default().RPCURL)
-	if err != nil {
-		panic(err)
-	}
+func SubmitData(api *gsrpc.SubstrateAPI, data string) (types.Hash, error) {
 
 	meta, err := api.RPC.State.GetMetadataLatest()
 	if err != nil {
-		panic(err)
+		return types.Hash{}, err
 	}
-
 	// Set data and appID according to need
-	data := "this_is_a_random_blob_of_data"
 	appID := 0
 
 	c, err := types.NewCall(meta, "DataAvailability.submit_data", types.NewBytes([]byte(data)))
 	if err != nil {
-		panic(err)
+		return types.Hash{}, err
 	}
 
 	// Create the extrinsic
@@ -39,23 +25,23 @@ func main() {
 
 	genesisHash, err := api.RPC.Chain.GetBlockHash(0)
 	if err != nil {
-		panic(err)
+		return types.Hash{}, err
 	}
 
 	rv, err := api.RPC.State.GetRuntimeVersionLatest()
 	if err != nil {
-		panic(err)
+		return types.Hash{}, err
 	}
 
 	key, err := types.CreateStorageKey(meta, "System", "Account", signature.TestKeyringPairAlice.PublicKey)
 	if err != nil {
-		panic(err)
+		return types.Hash{}, err
 	}
 
 	var accountInfo types.AccountInfo
 	ok, err := api.RPC.State.GetStorageLatest(key, &accountInfo)
 	if err != nil || !ok {
-		panic(err)
+		return types.Hash{}, err
 	}
 
 	nonce := uint32(accountInfo.Nonce)
@@ -73,31 +59,14 @@ func main() {
 	// Sign the transaction using Alice's default account
 	err = ext.Sign(signature.TestKeyringPairAlice, o)
 	if err != nil {
-		panic(err)
+		return types.Hash{}, err
 	}
 
 	// Send the extrinsic
-	sub, err := api.RPC.Author.SubmitAndWatchExtrinsic(ext)
+	hash, err := api.RPC.Author.SubmitExtrinsic(ext)
 	if err != nil {
-		panic(err)
+		return types.Hash{}, err
 	}
 
-	fmt.Printf("Data submitted by Alice: %v against appID %v\n", data, appID)
-
-	defer sub.Unsubscribe()
-	timeout := time.After(100 * time.Second)
-	for {
-		select {
-		case status := <-sub.Chan():
-			if status.IsInBlock {
-				fmt.Printf("Txn inside block %v\n", status.AsInBlock.Hex())
-			} else if status.IsFinalized {
-				fmt.Printf("Txn inside finalized block\n")
-				return
-			}
-		case <-timeout:
-			fmt.Printf("timeout of 100 seconds reached without getting finalized status for extrinsic")
-			return
-		}
-	}
+	return hash, nil
 }
