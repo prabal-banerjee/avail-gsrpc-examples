@@ -1,23 +1,25 @@
 package extrinsics
 
 import (
+	"fmt"
+
 	gsrpc "github.com/centrifuge/go-substrate-rpc-client/v4"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/signature"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 )
 
-func SubmitData(api *gsrpc.SubstrateAPI, data string) (types.Hash, error) {
+// Submit data sends the extrinsic data to Substrate
+// seed is used for keyring generation, 42 is the network number for Substrate
+func SubmitData(api *gsrpc.SubstrateAPI, data string, seed string, appID int) (types.Hash, error) {
 
 	meta, err := api.RPC.State.GetMetadataLatest()
 	if err != nil {
 		return types.Hash{}, err
 	}
-	// Set data and appID according to need
-	appID := 0
 
 	c, err := types.NewCall(meta, "DataAvailability.submit_data", types.NewBytes([]byte(data)))
 	if err != nil {
-		return types.Hash{}, err
+		return types.Hash{}, fmt.Errorf("error creating new call: %s", err)
 	}
 
 	// Create the extrinsic
@@ -25,23 +27,29 @@ func SubmitData(api *gsrpc.SubstrateAPI, data string) (types.Hash, error) {
 
 	genesisHash, err := api.RPC.Chain.GetBlockHash(0)
 	if err != nil {
-		return types.Hash{}, err
+		return types.Hash{}, fmt.Errorf("error getting genesis hash: %s", err)
 	}
 
 	rv, err := api.RPC.State.GetRuntimeVersionLatest()
 	if err != nil {
-		return types.Hash{}, err
+		return types.Hash{}, fmt.Errorf("error retrieveing runtime version: %s", err)
 	}
 
-	key, err := types.CreateStorageKey(meta, "System", "Account", signature.TestKeyringPairAlice.PublicKey)
+	keyringPair, err := signature.KeyringPairFromSecret(seed, 42)
 	if err != nil {
-		return types.Hash{}, err
+		return types.Hash{}, fmt.Errorf("error creating keyring pair: %s", err)
+	}
+
+	// if testing locally with Alice account, use signature.TestKeyringPairAlice.PublicKey as last param
+	key, err := types.CreateStorageKey(meta, "System", "Account", keyringPair.PublicKey)
+	if err != nil {
+		return types.Hash{}, fmt.Errorf("error createStorageKey: %s", err)
 	}
 
 	var accountInfo types.AccountInfo
 	ok, err := api.RPC.State.GetStorageLatest(key, &accountInfo)
 	if err != nil || !ok {
-		return types.Hash{}, err
+		return types.Hash{}, fmt.Errorf("error GetStorageLatest: %s", err)
 	}
 
 	nonce := uint32(accountInfo.Nonce)
@@ -57,15 +65,15 @@ func SubmitData(api *gsrpc.SubstrateAPI, data string) (types.Hash, error) {
 	}
 
 	// Sign the transaction using Alice's default account
-	err = ext.Sign(signature.TestKeyringPairAlice, o)
+	err = ext.Sign(keyringPair, o)
 	if err != nil {
-		return types.Hash{}, err
+		return types.Hash{}, fmt.Errorf("error signing tx: %s", err.Error())
 	}
 
 	// Send the extrinsic
 	hash, err := api.RPC.Author.SubmitExtrinsic(ext)
 	if err != nil {
-		return types.Hash{}, err
+		return types.Hash{}, fmt.Errorf("error submitting extrinsic: %s", err.Error())
 	}
 
 	return hash, nil
