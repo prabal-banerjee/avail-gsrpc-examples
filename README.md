@@ -4,5 +4,5 @@ Example Go scripts to be used with [Polygon Avail](https://github.com/maticnetwo
 
 ### Example Usage 
 ```
-go run dataSubmitAndWatch.go
+go run cmd/blockListener/blockListener.go -config config.json
 ```
