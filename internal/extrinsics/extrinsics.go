@@ -10,7 +10,7 @@ import (
 
 // Submit data sends the extrinsic data to Substrate
 // seed is used for keyring generation, 42 is the network number for Substrate
-func SubmitData(api *gsrpc.SubstrateAPI, data string, seed string, appID int) (types.Hash, error) {
+func SubmitData(api *gsrpc.SubstrateAPI, data string, seed string, appID int, nonce uint32) (types.Hash, error) {
 
 	meta, err := api.RPC.State.GetMetadataLatest()
 	if err != nil {
@@ -40,19 +40,6 @@ func SubmitData(api *gsrpc.SubstrateAPI, data string, seed string, appID int) (t
 		return types.Hash{}, fmt.Errorf("error creating keyring pair: %s", err)
 	}
 
-	// if testing locally with Alice account, use signature.TestKeyringPairAlice.PublicKey as last param
-	key, err := types.CreateStorageKey(meta, "System", "Account", keyringPair.PublicKey)
-	if err != nil {
-		return types.Hash{}, fmt.Errorf("error createStorageKey: %s", err)
-	}
-
-	var accountInfo types.AccountInfo
-	ok, err := api.RPC.State.GetStorageLatest(key, &accountInfo)
-	if err != nil || !ok {
-		return types.Hash{}, fmt.Errorf("error GetStorageLatest: %s", err)
-	}
-
-	nonce := uint32(accountInfo.Nonce)
 	o := types.SignatureOptions{
 		BlockHash:          genesisHash,
 		Era:                types.ExtrinsicEra{IsMortalEra: false},

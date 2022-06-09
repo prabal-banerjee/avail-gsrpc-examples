@@ -3,24 +3,19 @@ package main
 import (
 	"avail-gsrpc-examples/internal/config"
 	"avail-gsrpc-examples/internal/extrinsics"
+	"crypto/rand"
 	"flag"
 	"log"
 	"os"
+	"sync/atomic"
 
-	"github.com/centrifuge/go-substrate-rpc-client/signature"
 	gsrpc "github.com/centrifuge/go-substrate-rpc-client/v4"
+	"github.com/centrifuge/go-substrate-rpc-client/v4/signature"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
+	"go.uber.org/ratelimit"
 )
 
-// Example use: go run cmd/blockListener/blockListener.go -config config.json
-
 func main() {
-	// This example shows how to subscribe to new blocks, as well as sending the extrinsic data.
-	//
-	// It displays the block number every time a new block is seen by the node you are connected to.
-	//
-	// The submitted extrinsic is dumped to stdout if found in the new block
-	// To use the default node url - config.Default().RPCURL
 	var configJSON string
 	var config config.Config
 	flag.StringVar(&configJSON, "config", "", "config json file")
@@ -49,8 +44,6 @@ func main() {
 	defer sub.Unsubscribe()
 	log.Println("Subscribed to new headers...")
 
-	count := 0
-
 	meta, err := api.RPC.State.GetMetadataLatest()
 	if err != nil {
 		panic(err)
@@ -69,44 +62,20 @@ func main() {
 		panic(err)
 	}
 	nonce := uint32(accountInfo.Nonce)
-	log.Println("Nonce: ", nonce)
 
-	submittedHash, err := extrinsics.SubmitData(api, "random test data", config.Seed, 0, nonce)
-	if err != nil {
-		panic(err)
-	}
-	log.Printf("Extrinsic submitted with hash: %s", submittedHash)
-
+	rl := ratelimit.New(10) // per second
 	for {
-		head := <-sub.Chan()
-		count++
-
-		blockHash, err := api.RPC.Chain.GetBlockHash(uint64(head.Number))
-		if err != nil {
-			panic(err)
-		}
-		log.Printf("Chain is at block: #%v with hash %v\n", head.Number, blockHash.Hex())
-
-		ret, err := api.RPC.Chain.GetBlock(blockHash)
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-		// Check if the submitted extrinsic is found inside the block (hash match)
-		for _, extrinsic := range ret.Block.Extrinsics {
-			extHash, err := types.GetHash(extrinsic)
+		rl.Take()
+		go func() {
+			data := make([]byte, 8192)
+			rand.Read(data)
+			submittedHash, err := extrinsics.SubmitData(api, string(data), config.Seed, 0, nonce)
+			atomic.AddUint32(&nonce, 1)
 			if err != nil {
 				panic(err)
 			}
-			if extHash == submittedHash {
-				log.Printf("SUCCESS!! Extrinsic data: %#v\n\n", extrinsic)
-				continue
-			}
-		}
-
-		if count == 10 {
-			sub.Unsubscribe()
-			break
-		}
+			log.Printf("Extrinsic submitted with hash: %s", submittedHash)
+		}()
 	}
+
 }
